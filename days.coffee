@@ -1,7 +1,4 @@
-{PI, sqrt, sin, cos, asin, acos, atan, min, max, round, ceil} = Math
-
-dist = (x, y) ->
-  sqrt(x ** 2 + y ** 2)
+{round} = Math
 
 # Constants
 fontHeight = 14
@@ -10,235 +7,120 @@ fontFamily = 'Roboto Mono'
 
 regular = fontHeight + 'px ' + fontFamily
 bold = 'bold ' + fontHeight + 'px ' + fontFamily
-minNameWidth = 1 * fontWidth
-noTypoRad = dist(minNameWidth / 2, fontHeight / 2)
-nameFadeWidth = 2 * fontWidth
-nameFadeRad = dist(nameFadeWidth / 2, fontHeight / 2)
-
-# areaLoss = PI / 4 * .5
-gr = (1 + 5**.5) / 2
-ga = PI*2 / gr**2
 
 timer = performance.now()
-canvas = document.getElementById('canvas')
 
-vp =
-  scale: .333
-  rot: -PI / 2
-  offx: 0
-  offy: 0
-  pX: 0
-  pY: 0
-  sep: 1.1
-  fat: 1.1
-  panning: false
-  panx: 0
-  pany: 0
-  panstx: 0
-  pansty: 0
-  minDispRad: 0.01
-  update: ->
-    @width = window.innerWidth
-    @height = window.innerHeight
-    canvas.width = @width
-    canvas.height = @height
-    @min = min(@width, @height)
-    @unit = @min / @sep / 2 * @scale
-    @cx = @width / 2 + @offx * @unit
-    @cy = @height / 2 + @offy * @unit
+graph = {}
 
+# fit fits a value between 0 and 1 proportionally to its distance to min and max
+fit = (val, min, max) ->
+  (val-min)/(max-min)
 
-class Node
-  constructor: (obj) ->
-    @x = 0
-    @y = 0
-    @rad = 1
-    @hideDirs = false
-    @name = obj.name
+class Graph
+  constructor: (containerName) ->
+    req = new XMLHttpRequest()
+    req.open('GET', 'https://gadfly16.github.io/sagacity/frames.json')
+    req.responseType = 'json'
 
-    ctx = canvas.getContext('2d')
-    ctx.font = bold
-    nameMeasure = ctx.measureText(' ' + obj.name)
-    @nameWidth = nameMeasure.width
+    @container = document.getElementById(containerName)
+    @start_elm = @container.querySelector('#settings>#start')
+    @duration_elm = @container.querySelector('#settings>#duration')
+    @period_elm = @container.querySelector('#settings>#period')
+    @goal_elm = @container.querySelector('#settings>#start')
+    @canvas = @container.querySelector('.canvas')
+    @setCanvasSize()
+    graph = this
 
-    @files = []
-    @dirs = []
-    if obj.contents
-      for kid in obj.contents
-        if kid.type == 'directory'
-          @dirs.push(new Node(kid))
-        else if kid.type == 'file'
-          @files.push(new Node(kid))
+    req.onload = ->
+      graph.frameList = req.response
+      graph.changeSettings()
 
-  layout: (@x=0, @y=0, @rad=1, @slice=PI, @dir = 0) ->
-    nDist = dist(@x, @y)
+      graph.container.querySelectorAll('input').forEach(
+        (item) -> item.addEventListener('change', graph.changeSettings)
+      )
 
-    if @dirs.length > 0
-      nDirs = @dirs.length
+      if graph.canvas.getContext
+        # window.onmousedown = mouseDownAct
+        # window.onmouseup = mouseUpAct
+        window.onmousemove = mouseMoveAct
+        window.onresize = resizeAct
+        # window.onwheel = wheelAct
+        redrawScreen()
 
-      if nDirs == 1
-        wishRad = @rad / vp.sep
-      else
-        wishRad = sqrt(@rad ** 2 / nDirs) * vp.fat
+    req.send()
 
-      if wishRad * vp.scale < vp.minDispRad
-        @hideDirs = true
-      else
-        @hideDirs = false
-        dirDist = nDist + (@rad + wishRad) * vp.sep
-        wishSlice = asin(wishRad / dirDist)
-        dirSlice = @slice / nDirs
+  setCanvasSize: () ->
+    width = @container.getBoundingClientRect().width
+    @canvas.width = width
+    @canvas.height = width / 2
 
-        if wishSlice < dirSlice
-          dirRad = wishRad
-        else
-          dirRad = sin(dirSlice) * dirDist
+  changeSettings: () ->
+    @start = (Math.floor((new Date(@start_elm.value)).getTime()/1000) - @frameList[0].ft) / 86400 + 1
+    @duration = parseInt(@duration_elm.value)
+    @period = parseInt(@period_elm.value)
+    @goal = parseFloat(@goal_elm.value)
+    # console.log(@start,@duration,@period,@goal)
 
-        if @rad != 1
-          firstDirDir = @dir - @slice + dirSlice
-        else
-          firstDirDir = vp.rot
+    # Find trade chances
+    i = 0
+    end = @frameList.length - @period
+    while i < end
+      @frameList[i].reBuy = null
+      @frameList[i].reSell = null
+      reBuyPrice = @frameList[i].mn / @goal
+      reSellPrice = @frameList[i].mx * @goal
+      fi = i + 1
+      while fi <= i + @period && !(@frameList[i].reBuy || @frameList[i].reSell)
+        # console.log(i,fi)
+        if @frameList[fi].mx < reBuyPrice && !@frameList[i].reBuy
+          @frameList[i].reBuy = fi
+        if @frameList[fi].mn > reSellPrice && !@frameList[i].reSell
+          @frameList[i].reSell = fi
+        fi++
+      i++
 
-        for dir, i in @dirs
-          kidDir = firstDirDir + dirSlice * i * 2
-          dir.layout(cos(kidDir) * dirDist, \
-                     sin(kidDir) * dirDist, \
-                     dirRad, dirSlice, kidDir)
+  draw: () ->
+    ctx = @canvas.getContext('2d')
 
-    # Fatsy root
-    if @rad == 1
-      @rad = vp.fat
-
-  draw: (ctx) ->
-    # Calculate details
-    dispRad = @rad * vp.unit / vp.sep
-    dispX = vp.cx + @x * vp.unit
-    dispY = vp.cy + @y * vp.unit
-
+    ctx.clearRect(0, 0, @canvas.width, @canvas.height)
     ctx.save()
 
-    # Draw lines
-    if @dirs.length > 0
-      if @hideDirs
-        sRad = @rad * vp.scale
-        flagRad = @rad + .02 / vp.scale
-        flagSlice = (PI / 2 + asin(@rad / vp.sep / dist(@x, @y)) \
-            - acos(@rad / vp.sep / flagRad)) / vp.sep
-        if @rad == vp.fat
-          flagSlice = PI / 4
-          console.log(flagSlice)
-        flagStartX = flagRad * cos(@dir - flagSlice) + @x
-        flagStartY = flagRad * sin(@dir - flagSlice) + @y
-        ctx.beginPath()
-        ctx.moveTo(dispX, dispY)
-        ctx.lineTo(vp.cx + flagStartX * vp.unit, vp.cy + flagStartY * vp.unit)
-        ctx.arc(dispX, dispY, flagRad * vp.unit, @dir - flagSlice, @dir + flagSlice)
-        ctx.fillStyle = '#a0a0a0'
-        ctx.fill()
-      else
-        ctx.lineWidth = dispRad * .15 / @dirs.length ** .5
-        ctx.strokeStyle = '#505050'
-        for d, i in @dirs
-          ctx.beginPath()
-          ctx.moveTo(dispX, dispY)
-          ddX = d.x * vp.unit + vp.cx
-          ddY = d.y * vp.unit + vp.cy
-          ctx.lineTo(ddX, ddY)
-          if i == 0
-            lw = ctx.lineWidth
-            ctx.lineWidth = lw * 1.333
-            ctx.strokeStyle = '#404040'
-            ctx.stroke()
-            ctx.lineWidth = lw * .75
-            ctx.strokeStyle = '#505050'
-            ctx.stroke()
-            ctx.lineWidth = lw
-          else
-            ctx.stroke()
+    cnvRect = @canvas.getBoundingClientRect()
 
-    # Selection indicator
-    if dist(dispX - vp.pX, dispY - vp.pY) < dispRad
-      ctx.beginPath()
-      ctx.fillStyle = '#c0c0c0'
-      ctx.arc(dispX, dispY, dispRad + 3, 0, PI*2)
-      ctx.fill()
+    # Find min and max of displayed frames
+    max = @frameList[@start].mx
+    min = @frameList[@start].mn
+    i = @start + 1
+    while i <= @start + @duration
+      max = Math.max(max, @frameList[i].mx) 
+      min = Math.min(min, @frameList[i].mn)
+      i++
+    
+    # Draw bars
+    ctx.fillStyle = '#ff0000'
+    barWidth = cnvRect.width / @duration
 
-    # Body
-    ctx.fillStyle = '#404040'
-    ctx.beginPath()
-    ctx.arc(dispX, dispY, dispRad, 0, PI*2)
-    ctx.fill()
-    ctx.clip()
+    offset = @start
+    i = 0
+    while i <= @duration
+      x = i * barWidth
+      y = (1-fit(@frameList[offset+i].mx, min, max))*cnvRect.height
+      barHeight = (1-fit(@frameList[offset+i].mn, min, max))*cnvRect.height - y
+      ctx.fillRect(x, y, barWidth, barHeight)
+      i++
 
-    # Inner circle
-    ctx.fillStyle = '#303030'
-    ctx.beginPath()
-    ctx.arc(dispX, dispY, inRad * vp.unit, 0, PI*2)
-    ctx.fill()
-
-    # Files
-    fAreaRad = @rad / vp.sep ** 1.5
-    inRad = vp.sep - 1
-    nFiles = @files.length
-    if nFiles > 0
-      primScale = 1 / sqrt((1 + nFiles * (1 + inRad)) * gr)
-      scale = fAreaRad * primScale * (1 - primScale)
-      # fDispRad = scale * vp.unit
-      fDispWidth = sqrt(2) * scale * vp.unit
-
-      if scale * vp.scale > vp.minDispRad / 2
-        ctx.fillStyle = '#606060'
-        for f, i in @files
-          fDist = sqrt((1 + (nFiles - i) + nFiles * inRad) * gr) * scale
-          fDir = ga * i - PI / 2
-          # console.log(@name, "scale:", scale, "fDist:", fDist, "fDispRad:", fDispRad)
-          fX = (@x + cos(fDir) * fDist) * vp.unit + vp.cx - fDispWidth / 2
-          fY = (@y + sin(fDir) * fDist) * vp.unit + vp.cy - fDispWidth / 2
-          ctx.beginPath()
-          ctx.fillRect(fX, fY, fDispWidth, fDispWidth)
-          # ctx.arc(fX, fY, fDispRad, 0, 2*PI)
-          ctx.fill()
-      else
-        ctx.fillStyle = '#505050'
-        ctx.beginPath()
-        ctx.arc(dispX, dispY, @rad / vp.sep ** 3 * vp.unit, 0, PI*2)
-        ctx.fill()
-        ctx.fillStyle = '#404040'
-        ctx.beginPath()
-        ctx.arc(dispX, dispY, inRad * 3 * @rad * vp.unit, 0, PI*2)
-        ctx.fill()
-
-    # Name
-    ctx.fillStyle = '#a0a0a0'
-    if dispRad > noTypoRad
-      typoBase = 2 * sqrt(dispRad ** 2 - (fontHeight / 2) ** 2)
-
-      # Align
-      if typoBase > @nameWidth
-        ctx.textAlign = 'center'
-        nx = dispX
-      else
-        ctx.textAlign = 'left'
-        nx = dispX - typoBase / 2 + fontWidth / 2
-
-      if dispRad > nameFadeRad
-        ctx.globalAlpha = 1
-      else
-        ctx.globalAlpha = (dispRad - noTypoRad) / (nameFadeRad - noTypoRad)
-
-      ctx.font = bold
-      ctx.textBaseline = 'middle'
-      ctx.fillText(@name, nx, dispY)
+    # FPS
+    t = performance.now()
+    ctx.font = regular
+    ctx.textAlign = 'left'
+    ctx.fillText(round(1000 / (t - timer)) + " FPS", 50, 50)
+    timer = t
 
     ctx.restore()
 
-    # Draw directories
-    if @dirs.length > 0 and not @hideDirs
-      dir.draw(ctx) for dir in @dirs
-
 resizeAct = ->
-  vp.update()
-  window.requestAnimationFrame(drawScreen)
+  graph.setCanvasSize()
+  redrawScreen()
 
 wheelAct = (e) ->
   if e.shiftKey
@@ -251,7 +133,7 @@ wheelAct = (e) ->
     vp.offy += (vp.height / 2 - e.clientY) * delta * vp.sep ** 2 / vp.unit
     vp.scale = scale
     vp.update()
-  window.requestAnimationFrame(drawScreen)
+  redrawScreen()
 
 mouseDownAct = (e) ->
   console.log("Pressed$ " + e.clientX)
@@ -262,51 +144,23 @@ mouseDownAct = (e) ->
   vp.panning = true
 
 mouseMoveAct = (e) ->
-  if vp.panning
-    vp.offx = vp.panstx + (e.clientX - vp.panx) / vp.unit
-    vp.offy = vp.pansty + (e.clientY - vp.pany) / vp.unit
-    vp.update()
-  vp.pX = e.clientX
-  vp.pY = e.clientY
-  window.requestAnimationFrame(drawScreen)
+  # if vp.panning
+  #   vp.offx = vp.panstx + (e.clientX - vp.panx) / vp.unit
+  #   vp.offy = vp.pansty + (e.clientY - vp.pany) / vp.unit
+  #   vp.update()
+  # vp.pX = e.clientX
+  # vp.pY = e.clientY
+  redrawScreen()
 
 mouseUpAct = (e) ->
   vp.panning = false
 
+redrawScreen = ->
+  window.requestAnimationFrame(drawScreen)
+
 drawScreen = ->
-  ctx = canvas.getContext('2d')
+  graph.draw()
 
-  ctx.clearRect(0, 0, vp.width, vp.height)
-  ctx.save()
+# Entry point. Just like that.
 
-  # vp.root.layout()
-  # vp.root.draw(ctx)
-
-  t = performance.now()
-  ctx.font = regular
-  ctx.textAlign = 'left'
-  ctx.fillText(round(1000 / (t - timer)) + " FPS", 50, 50)
-  timer = t
-
-  ctx.restore()
-
-# Init from here on, just like that.
-
-req = new XMLHttpRequest()
-req.open('GET', './frames.json')
-req.responseType = 'json'
-req.onload = ->
-  # vp.root = new Node(req.response[0])
-  console.log(vp.root)
-
-  if canvas.getContext
-    vp.update()
-    console.log(vp)
-    # window.onmousedown = mouseDownAct
-    # window.onmouseup = mouseUpAct
-    window.onmousemove = mouseMoveAct
-    # window.onresize = resizeAct
-    # window.onwheel = wheelAct
-    window.requestAnimationFrame(drawScreen)
-
-req.send()
+graph = new Graph("doc_graph")
