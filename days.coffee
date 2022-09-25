@@ -1,4 +1,4 @@
-{round} = Math
+{round, floor} = Math
 
 # Constants
 fontHeight = 14
@@ -26,26 +26,64 @@ class Graph
     @start_elm = @container.querySelector('#settings>#start')
     @duration_elm = @container.querySelector('#settings>#duration')
     @period_elm = @container.querySelector('#settings>#period')
-    @goal_elm = @container.querySelector('#settings>#start')
+    @goal_elm = @container.querySelector('#settings>#goal')
     @canvas = @container.querySelector('.canvas')
+    @focus = 0
+
+    @padLeft = 30
+    @padRight = 30
+    @padTop = 20
+    @padBottom = 40
     @setCanvasSize()
+
     graph = this
 
+    changeSettings = () ->
+      graph.start = (Math.floor((new Date(graph.start_elm.value)).getTime()/1000) - graph.frameList[0].ft) / 86400 + 1
+      graph.duration = parseInt(graph.duration_elm.value)
+      graph.period = parseInt(graph.period_elm.value)
+      graph.goal = parseFloat(graph.goal_elm.value)
+      console.log(graph.start,graph.duration,graph.period,graph.goal)
+
+      # Find trade chances
+      i = 0
+      end = graph.frameList.length - graph.period
+      while i < end
+        graph.frameList[i].reBuy = null
+        graph.frameList[i].reSell = null
+        reBuyPrice = graph.frameList[i].mn / graph.goal
+        reSellPrice = graph.frameList[i].mx * graph.goal
+        fi = i + 1
+        while fi <= i + graph.period && !(graph.frameList[i].reBuy && graph.frameList[i].reSell)
+          # console.log(i,fi)
+          if graph.frameList[fi].mx < reBuyPrice && !graph.frameList[i].reBuy
+            graph.frameList[i].reBuy = fi
+          if graph.frameList[fi].mn > reSellPrice && !graph.frameList[i].reSell
+            graph.frameList[i].reSell = fi
+          fi++
+        i++
+      redrawScreen()
+
+    mouseMoveAct = (e) ->
+      x = e.offsetX
+      y = e.offsetY
+      if x > graph.padLeft && x < graph.padLeft + graph.width && y > graph.padTop && y < graph.padTop + graph.height
+        graph.focus = floor((x - graph.padLeft) / (graph.width / graph.duration))
+      redrawScreen()
+
     req.onload = ->
-      graph.frameList = req.response
-      graph.changeSettings()
-
       graph.container.querySelectorAll('input').forEach(
-        (item) -> item.addEventListener('change', graph.changeSettings)
+        (item) -> item.addEventListener('change', changeSettings)
       )
+      # window.onmousedown = mouseDownAct
+      # window.onmouseup = mouseUpAct
+      graph.canvas.onmousemove = mouseMoveAct
+      window.onresize = resizeAct
+      # window.onwheel = wheelAct
 
-      if graph.canvas.getContext
-        # window.onmousedown = mouseDownAct
-        # window.onmouseup = mouseUpAct
-        window.onmousemove = mouseMoveAct
-        window.onresize = resizeAct
-        # window.onwheel = wheelAct
-        redrawScreen()
+      graph.frameList = req.response
+      changeSettings()
+      console.log(graph.frameList)
 
     req.send()
 
@@ -53,13 +91,14 @@ class Graph
     width = @container.getBoundingClientRect().width
     @canvas.width = width
     @canvas.height = width / 2
+    @width = @canvas.width - @padLeft - @padRight
+    @height = @canvas.height - @padTop - @padBottom
 
   changeSettings: () ->
     @start = (Math.floor((new Date(@start_elm.value)).getTime()/1000) - @frameList[0].ft) / 86400 + 1
     @duration = parseInt(@duration_elm.value)
     @period = parseInt(@period_elm.value)
     @goal = parseFloat(@goal_elm.value)
-    # console.log(@start,@duration,@period,@goal)
 
     # Find trade chances
     i = 0
@@ -78,14 +117,14 @@ class Graph
           @frameList[i].reSell = fi
         fi++
       i++
+    redrawScreen()
 
   draw: () ->
     ctx = @canvas.getContext('2d')
 
     ctx.clearRect(0, 0, @canvas.width, @canvas.height)
     ctx.save()
-
-    cnvRect = @canvas.getBoundingClientRect()
+    ctx.lineWidth = 2 ;
 
     # Find min and max of displayed frames
     max = @frameList[@start].mx
@@ -96,24 +135,87 @@ class Graph
       min = Math.min(min, @frameList[i].mn)
       i++
     
-    # Draw bars
-    ctx.fillStyle = '#ff0000'
-    barWidth = cnvRect.width / @duration
+    f = @start + @focus
 
+    # Draw bars
+    barWidth = @width / @duration
+
+    gap = 0.1
     offset = @start
     i = 0
     while i <= @duration
-      x = i * barWidth
-      y = (1-fit(@frameList[offset+i].mx, min, max))*cnvRect.height
-      barHeight = (1-fit(@frameList[offset+i].mn, min, max))*cnvRect.height - y
-      ctx.fillRect(x, y, barWidth, barHeight)
+      x = i * barWidth + @padLeft
+      y = fit(@frameList[offset+i].mx, max, min) * @height
+      barHeight = fit(@frameList[offset+i].mn, max, min) * @height - y
+      if offset+i == f
+        # Draw focus line
+        ctx.fillStyle = '#909090'
+        ctx.fillRect(x, 0, barWidth, @canvas.height)
+        # Store focus values for later use
+        fx = x + barWidth / 2
+        fy = y + @padTop
+        fh = barHeight
+      ctx.fillStyle = '#404040'
+      if @frameList[offset+i].reSell
+        ctx.fillStyle = '#20b020'
+      ctx.fillRect(x+barWidth*gap/2, y+@padTop, barWidth*(1-gap), barHeight/2)
+      ctx.fillStyle = '#404040'
+      if @frameList[offset+i].reBuy
+        ctx.fillStyle = '#b04020'
+      ctx.fillRect(x+barWidth*gap/2, y+@padTop+barHeight/2, barWidth*(1-gap), barHeight/2)
       i++
+
+    # Draw focus info
+    ctx.fillStyle = '#404040'
+    ctx.font = bold
+    ctx.textAlign = 'center'
+    # console.log(@start+@focus)
+    fdt = (new Date(@frameList[f].ft*1000)).toDateString()
+    fmax = String(@frameList[f].mx)
+    fmaxWidth = fontWidth * (fmax.length)
+    fmin = String(@frameList[f].mn)
+    fminWidth = fontWidth * (fmin.length)
+    ctx.fillRect(fx - fmaxWidth / 2, fy - fontHeight - 20, fmaxWidth, fontHeight + 8)
+    ctx.fillRect(fx - fminWidth / 2, fy + fh + 12, fminWidth, fontHeight + 8)
+    ctx.fillStyle = '#a0a0a0'
+    ctx.fillText(fmax, fx, fy - 17)
+    ctx.fillText(fmin, fx, fy + fh + 15 + fontHeight)
+    ctx.fillStyle = '#404040'
+    ctx.fillText(fdt, @canvas.width / 2, @canvas.height - 15)
+
+    rs = @frameList[f].reSell
+    if rs
+      ctx.strokeStyle = '#20f020'
+      ctx.beginPath()
+      ctx.moveTo(fx, fy)
+      ctx.lineTo(fx+(rs-f)*barWidth, fit(@frameList[rs].mn, max, min) * @height + @padTop)
+      ctx.stroke()
+
+      ctx.fillStyle = '#20b020'
+      ctx.textAlign = 'right'
+      rst = "Re-sell in " + (rs - f) + " days at "
+      rsp = @frameList[rs].mn
+      ctx.fillText(rst + rsp + " ", @canvas.width / 2, 20)
+
+    rb = @frameList[f].reBuy
+    if rb
+      ctx.strokeStyle = '#f02020'
+      ctx.beginPath()
+      ctx.moveTo(fx, fy+fh)
+      ctx.lineTo(fx+(rb-f)*barWidth, fit(@frameList[rb].mx, max, min) * @height + @padTop)
+      ctx.stroke()
+
+      ctx.fillStyle = '#b02020'
+      ctx.textAlign = 'left'
+      rbt = " Re-buy in " + (rb - f) + " days at "
+      rbp = @frameList[rb].mx
+      ctx.fillText(rbt + rbp, @canvas.width / 2, 20)
 
     # FPS
     t = performance.now()
     ctx.font = regular
     ctx.textAlign = 'left'
-    ctx.fillText(round(1000 / (t - timer)) + " FPS", 50, 50)
+    ctx.fillText(round(1000 / (t - timer)) + " FPS", 30, 30)
     timer = t
 
     ctx.restore()
@@ -142,15 +244,6 @@ mouseDownAct = (e) ->
   vp.panstx = vp.offx
   vp.pansty = vp.offy
   vp.panning = true
-
-mouseMoveAct = (e) ->
-  # if vp.panning
-  #   vp.offx = vp.panstx + (e.clientX - vp.panx) / vp.unit
-  #   vp.offy = vp.pansty + (e.clientY - vp.pany) / vp.unit
-  #   vp.update()
-  # vp.pX = e.clientX
-  # vp.pY = e.clientY
-  redrawScreen()
 
 mouseUpAct = (e) ->
   vp.panning = false
