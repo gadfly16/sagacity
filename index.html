@@ -3,37 +3,39 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Sagacity - Days</title>
+  <title>Sagacity - Price Keel</title>
   <link href="https://fonts.googleapis.com/css?family=Roboto+Mono" rel="stylesheet">
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./price-keel.css">
   <link rel="icon" href="./favicon.svg">
 </head>
 
 <body>
   <div id="topnav">Sagacity</div>
   <div id="content">
-    <h3>Days of Chances</h3>
+    <h3>The Price Keel Algorithm</h3>
     <div>
-      This is a simple illustration of how many days you can sell and rebuy,
-      or buy and resell your coins for a given interest rate during a given
-      duration of time.
+      This is a simple illustration of the Price Keel trading algorithm.
     </div>
     <div id="doc_graph">
       <div id="settings">
         <label for="start">Start:</label>
-        <input type="date" id="start" name="start" value="2022-01-01">
+        <input type="date" id="start" name="start" value="2021-03-01">
         <label for="duration">Duration:</label>
         <input type="number" id="duration" name="duration" value="365">
-        <label for="period">Period:</label>
-        <input type="number" id="period" name="period" value="365">
-        <label for="goal">Goal:</label>
-        <input type="number" id="goal" name="goal" value="1.08">
+        <label for="top">Top:</label>
+        <input type="number" id="top" name="top" value="5">
+        <label for="bottom">Bottom:</label>
+        <input type="number" id="bottom" name="bottom" value="0.2">
+        <label for="initial">Initial:</label>
+        <input type="number" id="initial" name="initial" value="100">
+        <label for="threshold">Threshold:</label>
+        <input type="number" id="threshold" name="threshold" value="0.02">
       </div>
       <canvas class="canvas">Canvas element not supported.</canvas>
     </div>
 
   </div>
-  <script src="./days.js"></script>
+  <script src="./price-keel.js"></script>
 </body>
 
 </html>
