@@ -69,7 +69,11 @@ class Graph
       lbottom = log(graph.bottom)
       cumfee = 0
       lastPrice = 0
+      maximum = graph.frames[graph.start].mx
+      minimum = graph.frames[graph.start].mn
       while i < graph.start + graph.duration
+        maximum = max(maximum, graph.frames[i].mx) 
+        minimum = min(minimum, graph.frames[i].mn)
         price = graph.frames[i].wa
         if lastPrice == 0 or max(price, lastPrice) / min(price, lastPrice) > 1 + graph.threshold
           lprice = log(price)
@@ -90,6 +94,8 @@ class Graph
         console.log(price, ratio, tradeval, ada, eur, (new Date(graph.frames[i].ft*1000)).toDateString(), sumval, cumfee)
         i++
 
+      graph.maximum = max(maximum, graph.top)
+      graph.minimum = min(minimum, graph.bottom)
       redrawScreen()
 
     mouseMoveAct = (e) ->
@@ -115,12 +121,13 @@ class Graph
 
     req.send()
 
-  drawHorizLine: (ctx, y, color) ->
-    ctx.strokeStyle = color
-    ctx.beginPath()
-    ctx.moveTo(@padLeft, y)
-    ctx.lineTo(@canvas.width-@padRight, y)
-    ctx.stroke()
+  drawHorizLine: (price, color) ->
+    y = @priceToY(price)
+    @ctx.strokeStyle = color
+    @ctx.beginPath()
+    @ctx.moveTo(@padLeft, y)
+    @ctx.lineTo(@canvas.width-@padRight, y)
+    @ctx.stroke()
 
   setCanvasSize: () ->
     width = @container.getBoundingClientRect().width
@@ -129,46 +136,37 @@ class Graph
     @width = @canvas.width - @padLeft - @padRight
     @height = @canvas.height - @padTop - @padBottom
 
+  priceToY: (price) ->
+    fit(price, @maximum, @minimum) * @height + @padTop
+
   draw: () ->
-    ctx = @canvas.getContext('2d')
+    @ctx = @canvas.getContext('2d')
 
-    ctx.clearRect(0, 0, @canvas.width, @canvas.height)
-    ctx.save()
-
-    # Find minimum and maximum of displayed frames
-    maximum = @frames[@start].mx
-    minimum = @frames[@start].mn
-    i = @start + 1
-    while i <= @start + @duration
-      maximum = max(maximum, @frames[i].mx) 
-      minimum = min(minimum, @frames[i].mn)
-      i++
-    maximum = max(maximum, @top)
-    minimum = min(minimum, @bottom)
+    @ctx.clearRect(0, 0, @canvas.width, @canvas.height)
+    @ctx.save()
 
     f = @start + @focus
 
     # Draw scale lines
-    range = maximum - minimum
+    range = @maximum - @minimum
     scale = 10 ** (floor(log10(range))-1)
-    first = ceil(minimum/scale)*scale
-    last = floor(maximum/scale)*scale
+    first = ceil(@minimum/scale)*scale
+    last = floor(@maximum/scale)*scale
 
-    ctx.lineWidth = 0.5 ;
-    ctx.fillStyle = LIGHT_GREY
-    ctx.font = REGULAR
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
+    @ctx.lineWidth = 0.5 ;
+    @ctx.fillStyle = LIGHT_GREY
+    @ctx.font = REGULAR
+    @ctx.textAlign = 'center'
+    @ctx.textBaseline = 'middle'
     prec = if scale >= 1 then 0 else abs(log10(scale))
 
     s = first
     while s <= last
-      y = fit(s, maximum, minimum) * @height + @padTop
-      @drawHorizLine(ctx, y, LIGHT_GREY)
-      ctx.fillText(s.toFixed(prec), @padLeft / 2, y)
+      @drawHorizLine(s, LIGHT_GREY)
+      @ctx.fillText(s.toFixed(prec), @padLeft / 2, @priceToY(s))
       s += scale
 
-    ctx.textBaseline = 'alphabetic'
+    @ctx.textBaseline = 'alphabetic'
 
     # Draw bars
     gap = 0.1
@@ -177,33 +175,33 @@ class Graph
     i = 0
     while i <= @duration
       x = i * barWidth + @padLeft
-      y = fit(@frames[offset+i].mx, maximum, minimum) * @height
-      barHeight = fit(@frames[offset+i].mn, maximum, minimum) * @height - y
+      y = @priceToY(@frames[offset+i].mx)
+      barHeight = @priceToY(@frames[offset+i].mn) - y
       if offset+i == f
         # Draw focus line
-        ctx.fillStyle = GREY
-        ctx.fillRect(x, 0, barWidth, @canvas.height)
+        @ctx.fillStyle = GREY
+        @ctx.fillRect(x, 0, barWidth, @canvas.height)
         # Store focus values for later use
         fx = x + barWidth / 2
-        fy = y + @padTop
+        fy = y
         fh = barHeight
-      ctx.fillStyle = DARK_GREY
+      @ctx.fillStyle = DARK_GREY
       if @frames[offset+i].tv > 0
-        ctx.fillStyle = GREEN
+        @ctx.fillStyle = GREEN
       else if @frames[offset+i].tv < 0
-        ctx.fillStyle = RED
+        @ctx.fillStyle = RED
       else
-        ctx.fillStyle = DARK_GREY
-      ctx.fillRect(x+barWidth*gap/2, y+@padTop, barWidth*(1-gap), barHeight)
-      ctx.fillStyle = DARK_GREY
+        @ctx.fillStyle = DARK_GREY
+      @ctx.fillRect(x+barWidth*gap/2, y, barWidth*(1-gap), barHeight)
+      @ctx.fillStyle = DARK_GREY
       i++
 
     fframe = @frames[f]
 
     # Draw focus info
-    ctx.fillStyle = DARK_GREY
-    ctx.font = BOLD
-    ctx.textAlign = 'center'
+    @ctx.fillStyle = DARK_GREY
+    @ctx.font = BOLD
+    @ctx.textAlign = 'center'
     # console.log(@start+@focus)
     fdt = (new Date(fframe.ft*1000)).toDateString()
     ftv = fframe.tv
@@ -211,20 +209,20 @@ class Graph
     ftradeWidth = FONTWIDTH * (ftrade.length)
     fresult = fframe.adaval.toFixed(2) + '/' + fframe.eur.toFixed(2) + ' (' + (fframe.adaval+fframe.eur).toFixed(3) + ')'
     fresultWidth = FONTWIDTH * (fresult.length)
-    ctx.fillRect(fx - ftradeWidth / 2, fy - FONTHEIGHT - 20, ftradeWidth, FONTHEIGHT + 8)
-    ctx.fillRect(fx - fresultWidth / 2, fy + fh + 12, fresultWidth, FONTHEIGHT + 8)
-    ctx.fillStyle = if ftv > 0 then GREEN else RED
-    ctx.fillText(ftrade, fx, fy - 17)
-    ctx.fillStyle = LIGHT_GREY
-    ctx.fillText(fresult, fx, fy + fh + 15 + FONTHEIGHT)
-    ctx.fillStyle = DARK_GREY
-    ctx.fillText(fdt, @canvas.width / 2, @canvas.height - 15)
+    @ctx.fillRect(fx - ftradeWidth / 2, fy - FONTHEIGHT - 20, ftradeWidth, FONTHEIGHT + 8)
+    @ctx.fillRect(fx - fresultWidth / 2, fy + fh + 12, fresultWidth, FONTHEIGHT + 8)
+    @ctx.fillStyle = if ftv > 0 then GREEN else RED
+    @ctx.fillText(ftrade, fx, fy - 17)
+    @ctx.fillStyle = LIGHT_GREY
+    @ctx.fillText(fresult, fx, fy + fh + 15 + FONTHEIGHT)
+    @ctx.fillStyle = DARK_GREY
+    @ctx.fillText(fdt, @canvas.width / 2, @canvas.height - 15)
 
     # Draw top and bottom lines
-    ctx.lineWidth = 1 ;
-    @drawHorizLine(ctx, fit(@bottom,maximum, minimum)*@height+@padTop, GREEN)
-    @drawHorizLine(ctx, fit(@top,maximum, minimum)*@height+@padTop, RED)
-    @drawHorizLine(ctx, fit(Math.E**((log(@bottom) + log(@top)) / 2),maximum, minimum)*@height+@padTop, BLUE)
+    @ctx.lineWidth = 1 ;
+    @drawHorizLine(@bottom, GREEN)
+    @drawHorizLine(@top, RED)
+    @drawHorizLine(Math.E**((log(@bottom) + log(@top)) / 2), BLUE)
 
     # Draw summary
     startPrice = parseFloat(@frames[@start].wa)
@@ -236,17 +234,17 @@ class Graph
     endResultAda = endAda / startAda
     # console.log(typeof(startPrice))
     summary = 'Start price: ' + startPrice.toFixed(2) + ' Start ADA: ' + startAda.toFixed(2) + ' End price: ' + endPrice.toFixed(2) + ' (' + (endPrice/startPrice).toFixed(2) + ') End ADA:' + endAda.toFixed(2) + ' Result EUR: ' + endResultEur.toFixed(2)+ ' Result ADA: ' + endResultAda.toFixed(2)
-    ctx.fillStyle = DARK_GREY
-    ctx.fillText(summary, @canvas.width / 2, 25)
+    @ctx.fillStyle = DARK_GREY
+    @ctx.fillText(summary, @canvas.width / 2, 25)
 
     # FPS
     t = performance.now()
-    ctx.font = REGULAR
-    ctx.textAlign = 'left'
-    ctx.fillText(round(1000 / (t - timer)) + " FPS", 30, 30)
+    @ctx.font = REGULAR
+    @ctx.textAlign = 'left'
+    @ctx.fillText(round(1000 / (t - timer)) + " FPS", 30, 30)
     timer = t
 
-    ctx.restore()
+    @ctx.restore()
 
 resizeAct = ->
   graph.setCanvasSize()
