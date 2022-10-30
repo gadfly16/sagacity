@@ -228,11 +228,14 @@ class Graph
 
     # Draw summary
     startPrice = parseFloat(@frames[@start].wa)
+    startAda = @initial / startPrice
     endPrice = parseFloat(@frames[@start+@duration].wa)
     endValue = @frames[@start+@duration-1].adaval + @frames[@start+@duration-1].eur
-    endResult = endValue / @initial
+    endAda = endValue / endPrice
+    endResultEur = endValue / @initial
+    endResultAda = endAda / startAda
     # console.log(typeof(startPrice))
-    summary = 'Start price: ' + startPrice.toFixed(2) + ' End price: ' + endPrice.toFixed(2) + ' (' + (endPrice/startPrice).toFixed(2) + ') Result: ' + endResult.toFixed(2)
+    summary = 'Start price: ' + startPrice.toFixed(2) + ' Start ADA: ' + startAda.toFixed(2) + ' End price: ' + endPrice.toFixed(2) + ' (' + (endPrice/startPrice).toFixed(2) + ') End ADA:' + endAda.toFixed(2) + ' Result EUR: ' + endResultEur.toFixed(2)+ ' Result ADA: ' + endResultAda.toFixed(2)
     ctx.fillStyle = DARK_GREY
     ctx.fillText(summary, @canvas.width / 2, 25)
 
