@@ -101,7 +101,7 @@
           }
           graph.frames[i].adaval = ada * price;
           graph.frames[i].eur = eur;
-          console.log(price, ratio, tradeval, ada, eur, (new Date(graph.frames[i].ft * 1000)).toDateString(), sumval, cumfee);
+          // console.log(price, ratio, tradeval, ada, eur, (new Date(graph.frames[i].ft*1000)).toDateString(), sumval, cumfee)
           i++;
         }
         graph.maximum = max(maximum, graph.top);
@@ -157,7 +157,7 @@
     }
 
     draw() {
-      var barHeight, barWidth, endAda, endPrice, endResultAda, endResultEur, endValue, f, fdt, fframe, fh, first, fresult, fresultWidth, ftrade, ftradeWidth, ftv, fx, fy, gap, i, last, offset, prec, range, s, scale, startAda, startPrice, summary, t, x, y;
+      var barHeight, barWidth, endAda, endPrice, endResultAda, endResultEur, endValue, f, fResult, fResultLeft, fResultOffset, fResultRight, fResultWidth, fTradeLeft, fTradeOffset, fTradeRight, fdt, fframe, fh, first, ftrade, ftradeWidth, ftv, fx, fy, gap, i, last, offset, prec, range, s, scale, skip, startAda, startPrice, summary, t, x, y;
       this.ctx = this.canvas.getContext('2d');
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
       this.ctx.save();
@@ -167,17 +167,24 @@
       scale = 10 ** (floor(log10(range)) - 1);
       first = ceil(this.minimum / scale) * scale;
       last = floor(this.maximum / scale) * scale;
-      this.ctx.lineWidth = 0.5;
       this.ctx.fillStyle = LIGHT_GREY;
       this.ctx.font = REGULAR;
       this.ctx.textAlign = 'center';
       this.ctx.textBaseline = 'middle';
       prec = scale >= 1 ? 0 : abs(log10(scale));
       s = first;
+      skip = ceil(FONTHEIGHT * 1.5 / (this.priceToY(s) - this.priceToY(s + scale)));
+      i = 0;
       while (s <= last) {
+        if (i % skip === 0) {
+          this.ctx.lineWidth = 0.5;
+          this.ctx.fillText(s.toFixed(prec), this.padLeft / 2, this.priceToY(s));
+        } else {
+          this.ctx.lineWidth = 0.333;
+        }
         this.drawHorizLine(s, LIGHT_GREY);
-        this.ctx.fillText(s.toFixed(prec), this.padLeft / 2, this.priceToY(s));
         s += scale;
+        i++;
       }
       this.ctx.textBaseline = 'alphabetic';
       // Draw bars
@@ -210,6 +217,11 @@
         this.ctx.fillStyle = DARK_GREY;
         i++;
       }
+      // Draw top and bottom lines
+      this.ctx.lineWidth = 1;
+      this.drawHorizLine(this.bottom, GREEN);
+      this.drawHorizLine(this.top, RED);
+      this.drawHorizLine(Math.E ** ((log(this.bottom) + log(this.top)) / 2), BLUE);
       fframe = this.frames[f];
       // Draw focus info
       this.ctx.fillStyle = DARK_GREY;
@@ -218,23 +230,36 @@
       // console.log(@start+@focus)
       fdt = (new Date(fframe.ft * 1000)).toDateString();
       ftv = fframe.tv;
-      ftrade = (ftv > 0 ? 'Buy: ' : 'Sell: ') + (abs(ftv) / graph.frames[f].wa).toFixed(4) + ' for ' + abs(ftv).toFixed(2) + ' at ' + abs(fframe.wa).toFixed(2);
+      ftrade = (ftv > 0 ? '+₳' : '-₳') + (abs(ftv) / graph.frames[f].wa).toFixed(3) + ' (€' + abs(ftv).toFixed(2) + ') @€' + abs(fframe.wa).toFixed(2);
       ftradeWidth = FONTWIDTH * ftrade.length;
-      fresult = fframe.adaval.toFixed(2) + '/' + fframe.eur.toFixed(2) + ' (' + (fframe.adaval + fframe.eur).toFixed(3) + ')';
-      fresultWidth = FONTWIDTH * fresult.length;
-      this.ctx.fillRect(fx - ftradeWidth / 2, fy - FONTHEIGHT - 20, ftradeWidth, FONTHEIGHT + 8);
-      this.ctx.fillRect(fx - fresultWidth / 2, fy + fh + 12, fresultWidth, FONTHEIGHT + 8);
+      fTradeLeft = fx - ftradeWidth / 2;
+      fTradeRight = fx + ftradeWidth / 2;
+      fTradeOffset = 0;
+      if (fTradeLeft < 2) {
+        fTradeOffset = 2 - fTradeLeft;
+      }
+      if (fTradeRight > this.canvas.width - 2) {
+        fTradeOffset = this.canvas.width - 2 - fTradeRight;
+      }
+      fResult = fframe.adaval.toFixed(2) + '/' + fframe.eur.toFixed(2) + ' (' + (fframe.adaval + fframe.eur).toFixed(3) + ')';
+      fResultWidth = FONTWIDTH * fResult.length;
+      fResultLeft = fx - fResultWidth / 2;
+      fResultRight = fx + fResultWidth / 2;
+      fResultOffset = 0;
+      if (fResultLeft < 2) {
+        fResultOffset = 2 - fResultLeft;
+      }
+      if (fResultRight > this.canvas.width - 2) {
+        fResultOffset = this.canvas.width - 2 - fResultRight;
+      }
+      this.ctx.fillRect(fTradeLeft + fTradeOffset, fy - FONTHEIGHT - 20, ftradeWidth, FONTHEIGHT + 8);
+      this.ctx.fillRect(fResultLeft + fResultOffset, fy + fh + 12, fResultWidth, FONTHEIGHT + 8);
       this.ctx.fillStyle = ftv > 0 ? GREEN : RED;
-      this.ctx.fillText(ftrade, fx, fy - 17);
+      this.ctx.fillText(ftrade, fx + fTradeOffset, fy - 17);
       this.ctx.fillStyle = LIGHT_GREY;
-      this.ctx.fillText(fresult, fx, fy + fh + 15 + FONTHEIGHT);
+      this.ctx.fillText(fResult, fx + fResultOffset, fy + fh + 15 + FONTHEIGHT);
       this.ctx.fillStyle = DARK_GREY;
       this.ctx.fillText(fdt, this.canvas.width / 2, this.canvas.height - 15);
-      // Draw top and bottom lines
-      this.ctx.lineWidth = 1;
-      this.drawHorizLine(this.bottom, GREEN);
-      this.drawHorizLine(this.top, RED);
-      this.drawHorizLine(Math.E ** ((log(this.bottom) + log(this.top)) / 2), BLUE);
       // Draw summary
       startPrice = parseFloat(this.frames[this.start].wa);
       startAda = this.initial / startPrice;

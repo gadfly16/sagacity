@@ -91,7 +91,7 @@ class Graph
         graph.frames[i].adaval = ada * price
         graph.frames[i].eur = eur
 
-        console.log(price, ratio, tradeval, ada, eur, (new Date(graph.frames[i].ft*1000)).toDateString(), sumval, cumfee)
+        # console.log(price, ratio, tradeval, ada, eur, (new Date(graph.frames[i].ft*1000)).toDateString(), sumval, cumfee)
         i++
 
       graph.maximum = max(maximum, graph.top)
@@ -153,7 +153,6 @@ class Graph
     first = ceil(@minimum/scale)*scale
     last = floor(@maximum/scale)*scale
 
-    @ctx.lineWidth = 0.5 ;
     @ctx.fillStyle = LIGHT_GREY
     @ctx.font = REGULAR
     @ctx.textAlign = 'center'
@@ -161,10 +160,17 @@ class Graph
     prec = if scale >= 1 then 0 else abs(log10(scale))
 
     s = first
+    skip = ceil(FONTHEIGHT*1.5/(@priceToY(s)-@priceToY(s+scale)))
+    i = 0
     while s <= last
+      if i % skip == 0
+        @ctx.lineWidth = 0.5 ;
+        @ctx.fillText(s.toFixed(prec), @padLeft / 2, @priceToY(s))
+      else
+        @ctx.lineWidth = 0.333 ;
       @drawHorizLine(s, LIGHT_GREY)
-      @ctx.fillText(s.toFixed(prec), @padLeft / 2, @priceToY(s))
       s += scale
+      i++
 
     @ctx.textBaseline = 'alphabetic'
 
@@ -196,6 +202,12 @@ class Graph
       @ctx.fillStyle = DARK_GREY
       i++
 
+    # Draw top and bottom lines
+    @ctx.lineWidth = 1 ;
+    @drawHorizLine(@bottom, GREEN)
+    @drawHorizLine(@top, RED)
+    @drawHorizLine(Math.E**((log(@bottom) + log(@top)) / 2), BLUE)
+
     fframe = @frames[f]
 
     # Draw focus info
@@ -205,24 +217,32 @@ class Graph
     # console.log(@start+@focus)
     fdt = (new Date(fframe.ft*1000)).toDateString()
     ftv = fframe.tv
-    ftrade = (if ftv >0 then 'Buy: ' else 'Sell: ') + (abs(ftv)/graph.frames[f].wa).toFixed(4) + ' for ' + abs(ftv).toFixed(2) + ' at ' + abs(fframe.wa).toFixed(2)
+    ftrade = (if ftv>0 then '+₳' else '-₳') + (abs(ftv)/graph.frames[f].wa).toFixed(3) + ' (€' + abs(ftv).toFixed(2) + ') @€' + abs(fframe.wa).toFixed(2)
     ftradeWidth = FONTWIDTH * (ftrade.length)
-    fresult = fframe.adaval.toFixed(2) + '/' + fframe.eur.toFixed(2) + ' (' + (fframe.adaval+fframe.eur).toFixed(3) + ')'
-    fresultWidth = FONTWIDTH * (fresult.length)
-    @ctx.fillRect(fx - ftradeWidth / 2, fy - FONTHEIGHT - 20, ftradeWidth, FONTHEIGHT + 8)
-    @ctx.fillRect(fx - fresultWidth / 2, fy + fh + 12, fresultWidth, FONTHEIGHT + 8)
+    fTradeLeft = fx-ftradeWidth/2
+    fTradeRight = fx+ftradeWidth/2
+    fTradeOffset=0
+    if fTradeLeft < 2
+      fTradeOffset = 2-fTradeLeft
+    if fTradeRight > @canvas.width-2
+      fTradeOffset = @canvas.width-2-fTradeRight
+    fResult = fframe.adaval.toFixed(2) + '/' + fframe.eur.toFixed(2) + ' (' + (fframe.adaval+fframe.eur).toFixed(3) + ')'
+    fResultWidth = FONTWIDTH * (fResult.length)
+    fResultLeft = fx-fResultWidth/2
+    fResultRight = fx+fResultWidth/2
+    fResultOffset=0
+    if fResultLeft < 2
+      fResultOffset = 2-fResultLeft
+    if fResultRight > @canvas.width-2
+      fResultOffset = @canvas.width-2-fResultRight
+    @ctx.fillRect(fTradeLeft + fTradeOffset, fy - FONTHEIGHT - 20, ftradeWidth, FONTHEIGHT + 8)
+    @ctx.fillRect(fResultLeft + fResultOffset, fy + fh + 12, fResultWidth, FONTHEIGHT + 8)
     @ctx.fillStyle = if ftv > 0 then GREEN else RED
-    @ctx.fillText(ftrade, fx, fy - 17)
+    @ctx.fillText(ftrade, fx+fTradeOffset, fy - 17)
     @ctx.fillStyle = LIGHT_GREY
-    @ctx.fillText(fresult, fx, fy + fh + 15 + FONTHEIGHT)
+    @ctx.fillText(fResult, fx+fResultOffset, fy + fh + 15 + FONTHEIGHT)
     @ctx.fillStyle = DARK_GREY
     @ctx.fillText(fdt, @canvas.width / 2, @canvas.height - 15)
-
-    # Draw top and bottom lines
-    @ctx.lineWidth = 1 ;
-    @drawHorizLine(@bottom, GREEN)
-    @drawHorizLine(@top, RED)
-    @drawHorizLine(Math.E**((log(@bottom) + log(@top)) / 2), BLUE)
 
     # Draw summary
     startPrice = parseFloat(@frames[@start].wa)
