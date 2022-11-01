@@ -11,6 +11,7 @@ BOLD = 'BOLD ' + FONTHEIGHT + 'px ' + FONT_FAMILY
 GREEN = '#20b020'
 RED = '#b02020'
 BLUE = '#2020b0'
+YELLOW = '#c0c020'
 
 DARK_GREY = '#404040'
 GREY = '#909090'
@@ -43,9 +44,9 @@ class Graph
     @canvas = @container.querySelector('.canvas')
     @focus = 0
 
-    @padLeft = 30
-    @padRight = 30
-    @padTop = 20
+    @padLeft = 40
+    @padRight = 40
+    @padTop = 40
     @padBottom = 40
     @setCanvasSize()
 
@@ -103,6 +104,7 @@ class Graph
       y = e.offsetY
       if x > graph.padLeft && x < graph.padLeft + graph.width && y > graph.padTop && y < graph.padTop + graph.height
         graph.focus = floor((x - graph.padLeft) / (graph.width / graph.duration))
+      graph.yCoord = y
       redrawScreen()
 
     req.onload = ->
@@ -152,7 +154,7 @@ class Graph
     scale = 10 ** (floor(log10(range))-1)
     first = ceil(@minimum/scale)*scale
     last = floor(@maximum/scale)*scale
-
+ 
     @ctx.fillStyle = LIGHT_GREY
     @ctx.font = REGULAR
     @ctx.textAlign = 'center'
@@ -172,18 +174,15 @@ class Graph
       s += scale
       i++
 
-    @ctx.textBaseline = 'alphabetic'
-
     # Draw bars
     gap = 0.1
     barWidth = @width / @duration
-    offset = @start
     i = 0
-    while i <= @duration
+    while i < @duration
       x = i * barWidth + @padLeft
-      y = @priceToY(@frames[offset+i].mx)
-      barHeight = @priceToY(@frames[offset+i].mn) - y
-      if offset+i == f
+      y = @priceToY(@frames[@start+i].mx)
+      barHeight = @priceToY(@frames[@start+i].mn) - y
+      if @start+i == f
         # Draw focus line
         @ctx.fillStyle = GREY
         @ctx.fillRect(x, 0, barWidth, @canvas.height)
@@ -192,14 +191,16 @@ class Graph
         fy = y
         fh = barHeight
       @ctx.fillStyle = DARK_GREY
-      if @frames[offset+i].tv > 0
+      if @frames[@start+i].tv > 0
         @ctx.fillStyle = GREEN
-      else if @frames[offset+i].tv < 0
+      else if @frames[@start+i].tv < 0
         @ctx.fillStyle = RED
       else
         @ctx.fillStyle = DARK_GREY
       @ctx.fillRect(x+barWidth*gap/2, y, barWidth*(1-gap), barHeight)
-      @ctx.fillStyle = DARK_GREY
+      p = @frames[@start+i].wa
+      @ctx.fillStyle = LIGHT_GREY
+      @ctx.fillRect(x+barWidth*gap/2, @priceToY(p), barWidth*(1-gap), 1)
       i++
 
     # Draw top and bottom lines
@@ -207,6 +208,19 @@ class Graph
     @drawHorizLine(@bottom, GREEN)
     @drawHorizLine(@top, RED)
     @drawHorizLine(Math.E**((log(@bottom) + log(@top)) / 2), BLUE)
+    if @yCoord > @padTop - 10 && @yCoord < @canvas.height - @padBottom + 10
+      @ctx.lineWidth = .5 ;
+      fyPrice = fit(@yCoord,@canvas.height-@padBottom,@padTop)*(@maximum-@minimum)+@minimum
+      fyRatio = fitClamp(log(fyPrice), log(@bottom), log(@top))
+      @drawHorizLine(fyPrice, DARK_GREY)
+      if fyRatio >= 1
+        fyRatioStr = "1.00"
+      else
+        fyRatioStr = fyRatio.toFixed(3)[1..]
+      @ctx.fillStyle = DARK_GREY
+      @ctx.fillText(fyRatioStr, @canvas.width-@padRight/2, @yCoord)
+
+    @ctx.textBaseline = 'alphabetic'
 
     fframe = @frames[f]
 
